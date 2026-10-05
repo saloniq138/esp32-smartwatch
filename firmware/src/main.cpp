@@ -90,7 +90,7 @@ void parse(String s){
  else if(s=="MEDIA:VOLDOWN"){volume=max(0,volume-5);draw();}
  else if(s=="SCREEN:MEDIA"){page=MEDIA;draw();}
  else if(s=="SCREEN:HOME"){page=HOME;draw();}
- else if(s.startsWith("THEME:")){theme=constrain(s.substring(6).toInt(),0,3);savePrefs();draw();}
+ else if(s.startsWith("WIFI_SSID:")){prefs.putString("ssid",s.substring(10));}\n else if(s.startsWith("WIFI_PASS:")){prefs.putString("pass",s.substring(10));}\n else if(s=="WIFI_CONNECT"){wifiConnectSaved();draw();}\n else if(s.startsWith("THEME:")){theme=constrain(s.substring(6).toInt(),0,3);savePrefs();draw();}
  else if(s.startsWith("WALL:")){wallpaper=constrain(s.substring(5).toInt(),0,3);savePrefs();draw();}
  else if(s.startsWith("META:")){
   String x=s.substring(5);int a=x.indexOf('|'),b=x.indexOf('|',a+1),c=x.indexOf('|',b+1),d=x.indexOf('|',c+1);
