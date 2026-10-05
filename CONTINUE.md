@@ -1,28 +1,31 @@
-# CONTINUE — instrukcja kontynuacji
+# CONTINUE — continuation state
 
-## Cel
-Własny smartwatch na ESP32-S3 z BLE, multimediami Androida, powiadomieniami i pilotem IR.
+## Project
+Saloniq ESP32 Smartwatch — private repository saloniq138/esp32-smartwatch.
 
-## Stan
-Planning/documentation. Repozytorium i struktura są przygotowane. Sprzęt nie jest jeszcze ostatecznie wybrany. Firmware i Android app nie są jeszcze uznane za działające.
+## Goal
+A wrist smartwatch based on ESP32-S3 with a color display, physical buttons, BLE phone connection, Android media control/metadata, notifications and an IR remote.
 
-## Ustalenia
-- ESP32-S3
-- Android companion app
-- MediaSession
-- BLE
-- album art przygotowywane na telefonie
-- IR send + learning
-- prototyp przed PCB i obudową
+## Current state
+A working-code baseline has now been added:
+- firmware/ — PlatformIO ESP32-S3 firmware
+- android/ — Android companion app
+- existing design/protocol documentation remains in the repository
 
-## Przy nowym czacie
-1. Przeczytaj CONTINUE.md.
-2. Sprawdź PROJECT_STATUS.md.
-3. Sprawdź TODO.md.
-4. Sprawdź CHANGELOG.md i ostatni commit.
-5. Kontynuuj od Next action.
+## Hardware baseline
+- ESP32-S3 DevKit-class board
+- 240x240 ST7789 SPI display
+- four buttons
+- IR receiver + IR transmitter
+- future Li-Po, charger and vibration motor
 
-## Next action
-Wybrać dokładny ESP32-S3 i ekran, następnie zrobić V1: ekran + przyciski + zegar.
+Pin assignments are prototypes only and live in firmware/include/config.h.
 
-Po każdym większym kroku aktualizuj PROJECT_STATUS.md, TODO.md, CONTINUE.md i CHANGELOG.md. Nie wpisuj rzeczy, które nie zostały faktycznie wykonane.
+## Architecture
+ESP32-S3 is the BLE peripheral. Android is the BLE central and also bridges Android MediaSession data to the watch. The watch sends media/IR commands back over BLE.
+
+## Current next action
+Build both projects and test the first physical prototype. After that, implement album art, notifications, IR learning/storage, battery and final PCB.
+
+## Rule
+Only mark hardware/features as completed after they are actually tested. Update this file, PROJECT_STATUS.md, TODO.md and CHANGELOG.md after each major verified step.
