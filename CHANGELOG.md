@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-05 — USB-C charging architecture
+- Added USB-C charging/programming to the final hardware requirements.
+- Added CC1/CC2, USB D+/D-, ESD, Li-Po charger/power-path and 3.3V regulator requirements.
+- Added USB-C and charging tasks to the hardware TODO.
+
 ## 2026-10-05 — firmware build foundation
 - Fixed invalid escaped newlines in the BLE/Wi-Fi command parser.
 - Made Preferences initialization safe before any settings access.
