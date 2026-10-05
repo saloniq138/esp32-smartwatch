@@ -1,0 +1,28 @@
+name: Firmware CI
+
+on:
+  push:
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware.yml"
+  pull_request:
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+          restore-keys: |
+            platformio-${{ runner.os }}-
+      - uses: n-vr/setup-platformio-action@v1
+      - name: Build ESP32-S3 firmware
+        working-directory: firmware
+        run: pio run
