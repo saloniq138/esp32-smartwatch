@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-05 — firmware build foundation
+- Fixed invalid escaped newlines in the BLE/Wi-Fi command parser.
+- Made Preferences initialization safe before any settings access.
+- Added GitHub Actions CI to compile the PlatformIO ESP32-S3 firmware on every firmware change.
+
 ## 2026-10-05 — 240x280 + 8-button smartwatch baseline
 - Switched the firmware display target from the earlier 240x240 assumption to the selected 1.69" ST7789V 240x280 SPI display.
 - Expanded the prototype from four buttons to eight buttons.
