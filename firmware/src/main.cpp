@@ -194,6 +194,6 @@ void loop(){
  if(last[6]&&!now[6]){page=MENU;draw();}
  if(last[7]&&!now[7]){if(page==IR)sendCmd("IR:LEARN");else if(page==TV_REMOTE)sendCmd("IR:TV:MUTE");else if(page==SETTINGS)savePrefs();draw();}
  for(int i=0;i<8;i++)last[i]=now[i];
- if(IrReceiver.decode()){sendCmd(String("IR:RAW:")+String(IrReceiver.decodedIRData.decodedRawData,HEX));IrReceiver.resume();}
+ if(IrReceiver.decode()){ if(irLearning){ auto *p=IrReceiver.decodedIRData.rawDataPtr; uint16_t n=p?p->rawlen:0; if(p && n>0 && n<=IR_MAX_RAW){ uint16_t v[IR_MAX_RAW]; for(uint16_t i=0;i<n;i++) v[i]=p->rawbuf[i]*MICROS_PER_TICK; saveIR(irLearnSlot,v,n); sendCmd("IR:LEARNED"); } else sendCmd("IR:LEARN_FAILED"); irLearning=false; } else sendCmd(String("IR:RAW:")+String(IrReceiver.decodedIRData.decodedRawData,HEX)); IrReceiver.resume(); }
  delay(30);
 }
