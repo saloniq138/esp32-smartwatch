@@ -25,7 +25,9 @@ const uint16_t BG[4]={ST77XX_BLACK,0x001F,0x7800,0x07E0};
 const uint16_t FG[4]={ST77XX_WHITE,ST77XX_WHITE,ST77XX_WHITE,ST77XX_BLACK};
 
 String cut(String s,int n){return s.length()<=n?s:s.substring(0,n-1)+"~";}
-void savePrefs(){prefs.putInt("theme",theme);prefs.putInt("wall",wallpaper);}
+
+void safePrefsBegin(){ static bool started=false; if(!started){prefs.begin("watch",false); started=true;} }
+void savePrefs(){safePrefsBegin(); prefs.putInt("theme",theme);prefs.putInt("wall",wallpaper);}
 void drawBackground(){display.fillScreen(BG[theme]);if(wallpaper==1){for(int y=0;y<280;y+=20)display.drawFastHLine(0,y,240,FG[theme]);}else if(wallpaper==2){for(int x=0;x<240;x+=20)display.drawFastVLine(x,0,280,FG[theme]);}else if(wallpaper==3){for(int r=10;r<150;r+=25)display.drawCircle(120,140,r,FG[theme]);}}
 
 void home(){
@@ -90,7 +92,7 @@ void parse(String s){
  else if(s=="MEDIA:VOLDOWN"){volume=max(0,volume-5);draw();}
  else if(s=="SCREEN:MEDIA"){page=MEDIA;draw();}
  else if(s=="SCREEN:HOME"){page=HOME;draw();}
- else if(s.startsWith("WIFI_SSID:")){prefs.putString("ssid",s.substring(10));}\n else if(s.startsWith("WIFI_PASS:")){prefs.putString("pass",s.substring(10));}\n else if(s=="WIFI_CONNECT"){wifiConnectSaved();draw();}\n else if(s.startsWith("THEME:")){theme=constrain(s.substring(6).toInt(),0,3);savePrefs();draw();}
+ else if(s.startsWith("WIFI_SSID:")){safePrefsBegin();prefs.putString("ssid",s.substring(10));}\n else if(s.startsWith("WIFI_PASS:")){safePrefsBegin();prefs.putString("pass",s.substring(10));}\n else if(s=="WIFI_CONNECT"){wifiConnectSaved();draw();}\n else if(s.startsWith("THEME:")){theme=constrain(s.substring(6).toInt(),0,3);savePrefs();draw();}
  else if(s.startsWith("WALL:")){wallpaper=constrain(s.substring(5).toInt(),0,3);savePrefs();draw();}
  else if(s.startsWith("META:")){
   String x=s.substring(5);int a=x.indexOf('|'),b=x.indexOf('|',a+1),c=x.indexOf('|',b+1),d=x.indexOf('|',c+1);
@@ -112,13 +114,14 @@ void ble(){
  rx->setCallbacks(new RxCB());svc->start();auto*a=NimBLEDevice::getAdvertising();a->addServiceUUID(BLE_SERVICE_UUID);a->setName(BLE_DEVICE_NAME);a->start();
 }
 void wifiConnectSaved(){
- prefs.begin("watch",false);theme=prefs.getInt("theme",0);wallpaper=prefs.getInt("wall",0);
+ safePrefsBegin();theme=prefs.getInt("theme",0);wallpaper=prefs.getInt("wall",0);
  String ssid=prefs.getString("ssid",""),pass=prefs.getString("pass","");
  if(ssid.length()){WiFi.mode(WIFI_STA);WiFi.setHostname(WIFI_HOSTNAME);WiFi.begin(ssid.c_str(),pass.c_str());for(int i=0;i<30&&WiFi.status()!=WL_CONNECTED;i++)delay(250);wifiConnected=WiFi.status()==WL_CONNECTED;}
  configTime(3600,3600,"pool.ntp.org","time.nist.gov");
 }
 void setup(){
- Serial.begin(115200);pinMode(TFT_BL,OUTPUT);digitalWrite(TFT_BL,HIGH);
+ Serial.begin(115200);
+ safePrefsBegin();pinMode(TFT_BL,OUTPUT);digitalWrite(TFT_BL,HIGH);
  pinMode(BTN_UP,INPUT_PULLUP);pinMode(BTN_DOWN,INPUT_PULLUP);pinMode(BTN_LEFT,INPUT_PULLUP);pinMode(BTN_RIGHT,INPUT_PULLUP);
  pinMode(BTN_SELECT,INPUT_PULLUP);pinMode(BTN_BACK,INPUT_PULLUP);pinMode(BTN_MENU,INPUT_PULLUP);pinMode(BTN_ACTION,INPUT_PULLUP);
  SPI.begin(TFT_SCLK,-1,TFT_MOSI,TFT_CS);display.init(240,280);display.setRotation(0);
