@@ -18,6 +18,43 @@ uint32_t pos=0,dur=0;
 int volume=50;
 int theme=0, wallpaper=0;
 
+constexpr uint8_t IR_SLOTS = 4;
+constexpr uint16_t IR_MAX_RAW = 180;
+struct IRSavedCode {
+  uint16_t length;
+  uint16_t raw[IR_MAX_RAW];
+};
+bool irLearning = false;
+uint8_t irLearnSlot = 0;
+
+void saveIR(uint8_t slot, const uint16_t* raw, uint16_t len) {
+  if (slot >= IR_SLOTS || len == 0 || len > IR_MAX_RAW) return;
+  IRSavedCode code{};
+  code.length = len;
+  memcpy(code.raw, raw, len * sizeof(uint16_t));
+  safePrefsBegin();
+  prefs.putBytes((String("ir") + String(slot)).c_str(), &code, sizeof(code));
+}
+
+bool loadIR(uint8_t slot, IRSavedCode& code) {
+  if (slot >= IR_SLOTS) return false;
+  safePrefsBegin();
+  String key = String("ir") + String(slot);
+  if (prefs.getBytesLength(key.c_str()) != sizeof(code)) return false;
+  prefs.getBytes(key.c_str(), &code, sizeof(code));
+  return code.length > 0 && code.length <= IR_MAX_RAW;
+}
+
+void sendIRSlot(uint8_t slot) {
+  IRSavedCode code{};
+  if (!loadIR(slot, code)) {
+    sendCmd(String("IR:EMPTY:") + String(slot));
+    return;
+  }
+  IrSender.sendRaw(code.raw, code.length, 38);
+  sendCmd(String("IR:SENT:") + String(slot));
+}
+
 enum Page{HOME,MEDIA,MENU,IR,SETTINGS,WIFI_PAGE,TV_REMOTE}; Page page=HOME;
 int menuIndex=0;
 
@@ -95,6 +132,15 @@ void parse(String s){
  else if(s.startsWith("WIFI_SSID:")){safePrefsBegin();prefs.putString("ssid",s.substring(10));}
  else if(s.startsWith("WIFI_PASS:")){safePrefsBegin();prefs.putString("pass",s.substring(10));}
  else if(s=="WIFI_CONNECT"){wifiConnectSaved();draw();}
+ else if(s=="IR:LEARN"){irLearnSlot=0;irLearning=true;sendCmd("IR:LEARNING:0");draw();}
+ else if(s.startsWith("IR:LEARN:")){int slot=s.substring(9).toInt();if(slot>=0&&slot<IR_SLOTS){irLearnSlot=slot;irLearning=true;sendCmd(String("IR:LEARNING:")+String(slot));draw();}}
+ else if(s.startsWith("IR:SEND:")){int slot=s.substring(8).toInt();if(slot>=0&&slot<IR_SLOTS)sendIRSlot(slot);}
+ else if(s=="IR:TV:POWER"){sendIRSlot(0);}
+ else if(s=="IR:TV:CHUP"){sendIRSlot(1);}
+ else if(s=="IR:TV:CHDOWN"){sendIRSlot(2);}
+ else if(s=="IR:TV:VOLDOWN"){sendIRSlot(3);}
+ else if(s=="IR:TV:VOLUP"){sendIRSlot(3);}
+ else if(s=="IR:TV:MUTE"){sendIRSlot(3);}
  else if(s.startsWith("THEME:")){theme=constrain(s.substring(6).toInt(),0,3);savePrefs();draw();}
  else if(s.startsWith("WALL:")){wallpaper=constrain(s.substring(5).toInt(),0,3);savePrefs();draw();}
  else if(s.startsWith("META:")){
