@@ -1,21 +1,36 @@
 # Project Status
 
-## Aktualnie
-Repozytorium prywatne i dokumentacja bazowa są gotowe. Architektura projektu jest ustalona.
+## 2026-10-05 — implementation baseline
+The repository now contains a real V1 firmware baseline and Android companion app skeleton.
 
-## Nie zrobione
-- dokładny model ESP32-S3
-- ekran
-- schemat i PCB
-- obudowa
-- firmware
-- aplikacja Android
-- BLE protocol
-- media control
-- album art
-- notifications
-- IR learning/control
-- bateria i ładowanie
+### Implemented
+- ESP32-S3 PlatformIO project
+- ST7789 240x240 display driver baseline
+- four physical buttons
+- BLE GATT service with phone-to-watch and watch-to-phone characteristics
+- Android BLE scanner/connection
+- Android NotificationListenerService + MediaSession bridge
+- media metadata transfer: title, artist, state, position, duration
+- Play/Pause, Previous and Next commands
+- volume UI/commands
+- IR receiver/transmitter foundation
+- documented configurable pin map
 
-## Najbliższy krok
-Wybrać dokładny ESP32-S3 i ekran, potem zrobić V1: ekran + przyciski + zegar.
+### Not yet validated on physical hardware
+- exact board/display pinout
+- actual TFT module
+- BLE behavior on target phone
+- Spotify-specific behavior
+- album-art transfer
+- Android notification mirroring
+- IR learning storage/replay
+- battery gauge, charger and vibration motor
+- final PCB and enclosure
+
+## Next
+1. Build the firmware in PlatformIO.
+2. Build/install Android app.
+3. Wire the prototype using HARDWARE.md.
+4. Pair and test MediaSession with Spotify.
+5. Add album art and notifications.
+6. Add IR learning/storage.
