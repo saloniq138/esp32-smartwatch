@@ -39,6 +39,17 @@
 - [ ] TV protocol/profile database
 - [ ] configurable button mapping
 
+## Power / USB-C
+- [ ] USB-C receptacle on final PCB
+- [ ] USB-C CC1/CC2 sink resistors
+- [ ] USB D+/D- native ESP32-S3 connection
+- [ ] USB ESD protection
+- [ ] Li-Po charger with power-path
+- [ ] battery protection and safe charge-current selection
+- [ ] 3.3V regulator sized for ESP32-S3 + TFT + peripherals
+- [ ] charging/status indicator
+- [ ] battery voltage/fuel-gauge measurement
+
 ## Final hardware
 - [ ] exact ESP32-S3 module selection
 - [ ] battery + charger + protection
