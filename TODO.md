@@ -2,33 +2,42 @@
 
 ## V1 prototype
 - [x] ESP32-S3 PlatformIO project
-- [x] ST7789 display baseline
-- [x] four-button input
+- [x] ST7789V 1.69" 240x280 display baseline
+- [x] 8-button input
 - [x] BLE GATT baseline
 - [x] Android BLE companion baseline
 - [x] MediaSession metadata bridge
 - [x] Play/Pause
 - [x] Previous/Next
 - [x] volume commands
-- [x] IR receive/send foundation
+- [x] Wi-Fi provisioning commands
+- [x] NTP clock baseline
+- [x] theme selection
+- [x] wallpaper selection
+- [x] settings persistence on watch
+- [x] IR receive foundation
+- [x] TV remote command UI/protocol
 - [ ] Build firmware on target
 - [ ] Build/install Android app
 - [ ] Wire and test display/buttons
 - [ ] Pair phone and verify Spotify
 
 ## V2
+- [ ] Android Wi-Fi provisioning/settings UI
+- [ ] Android theme/wallpaper configuration UI
 - [ ] Album-art transfer and caching
 - [ ] Android notifications
 - [ ] vibration alerts
 - [ ] real battery measurement
-- [ ] clock synchronization
+- [ ] robust Europe/Warsaw timezone handling
 
 ## V3
 - [ ] IR learning with raw timing storage
 - [ ] named IR remote profiles
 - [ ] IR replay
 - [ ] richer media UI
-- [ ] settings persistence
+- [ ] TV protocol/profile database
+- [ ] configurable button mapping
 
 ## Final hardware
 - [ ] exact ESP32-S3 module selection
