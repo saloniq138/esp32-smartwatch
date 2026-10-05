@@ -17,3 +17,5 @@ Własny smartwatch na ESP32-S3 z BLE, sterowaniem multimediami Androida, powiado
 Planning / hardware TBD. Nie deklarujemy jeszcze działających funkcji sprzętowych.
 
 Najważniejsze pliki: PROJECT_STATUS.md, ROADMAP.md, CONTINUE.md, TODO.md.
+
+# ESP32 Smartwatch
