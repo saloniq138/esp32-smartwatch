@@ -37,7 +37,7 @@ ESP32-S3 is the BLE peripheral. Android is the BLE central and bridges Android M
 TV remote buttons currently send abstract IR command messages; full IR learning, raw timing storage, profiles and replay are not finished. Do not describe this as a fully working universal TV remote yet.
 
 ## Current next action
-Build both projects and test the first physical prototype. Then implement Android settings/provisioning UI, IR learning/storage/replay, notifications, album art, battery and final PCB.
+Build both projects and test the first physical prototype. Then implement Android settings/provisioning UI, IR learning/storage/replay, notifications, album art, battery and final PCB. The final PCB must include USB-C charging/programming with a proper Li-Po power-path.
 
 ## Rule
 Only mark hardware/features as completed after they are actually tested. Update this file, PROJECT_STATUS.md, TODO.md and CHANGELOG.md after each major verified step.
