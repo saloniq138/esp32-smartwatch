@@ -18,6 +18,8 @@ uint32_t pos=0,dur=0;
 int volume=50;
 int theme=0, wallpaper=0;
 
+void safePrefsBegin();
+
 constexpr uint8_t IR_SLOTS = 4;
 constexpr uint16_t IR_MAX_RAW = 180;
 struct IRSavedCode {
