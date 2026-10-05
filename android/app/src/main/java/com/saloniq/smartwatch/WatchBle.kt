@@ -8,6 +8,7 @@ import java.util.UUID
 object WatchBle{
  private val svc=UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
  private val rx=UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e")
+ private val tx=UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
  private var gatt:BluetoothGatt?=null
  fun connect(ctx:Context){
   val a=ctx.getSystemService(BluetoothManager::class.java).adapter ?: return
@@ -21,6 +22,14 @@ object WatchBle{
  }
  private val gattCb=object:BluetoothGattCallback(){
   override fun onConnectionStateChange(g:BluetoothGatt,status:Int,state:Int){if(state==BluetoothProfile.STATE_CONNECTED)g.discoverServices()}
+  override fun onServicesDiscovered(g:BluetoothGatt,status:Int){
+   val c=g.getService(svc)?.getCharacteristic(tx)?:return
+   g.setCharacteristicNotification(c,true)
+   c.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))?.let{it.value=BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE;g.writeDescriptor(it)}
+  }
+  override fun onCharacteristicChanged(g:BluetoothGatt,c:BluetoothGattCharacteristic){
+   if(c.uuid==tx) MediaNotificationListener.onWatchCommand(String(c.value).trim())
+  }
  }
  fun send(cmd:String){
   val g=gatt ?: return
