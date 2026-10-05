@@ -47,6 +47,8 @@ bool loadIR(uint8_t slot, IRSavedCode& code) {
   return code.length > 0 && code.length <= IR_MAX_RAW;
 }
 
+void sendCmd(String s);
+
 void sendIRSlot(uint8_t slot) {
   IRSavedCode code{};
   if (!loadIR(slot, code)) {
