@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <SPI.h>
+#include <Wire.h>
 #include <WiFi.h>
 #include <time.h>
 #include <Preferences.h>
@@ -19,181 +20,49 @@ int volume=50;
 int theme=0, wallpaper=0;
 
 void safePrefsBegin();
+constexpr uint8_t IR_SLOTS=4;
+constexpr uint16_t IR_MAX_RAW=180;
+struct IRSavedCode{uint16_t length;uint16_t raw[IR_MAX_RAW];};
+bool irLearning=false;uint8_t irLearnSlot=0;
 
-constexpr uint8_t IR_SLOTS = 4;
-constexpr uint16_t IR_MAX_RAW = 180;
-struct IRSavedCode {
-  uint16_t length;
-  uint16_t raw[IR_MAX_RAW];
-};
-bool irLearning = false;
-uint8_t irLearnSlot = 0;
-
-void saveIR(uint8_t slot, const uint16_t* raw, uint16_t len) {
-  if (slot >= IR_SLOTS || len == 0 || len > IR_MAX_RAW) return;
-  IRSavedCode code{};
-  code.length = len;
-  memcpy(code.raw, raw, len * sizeof(uint16_t));
-  safePrefsBegin();
-  prefs.putBytes((String("ir") + String(slot)).c_str(), &code, sizeof(code));
-}
-
-bool loadIR(uint8_t slot, IRSavedCode& code) {
-  if (slot >= IR_SLOTS) return false;
-  safePrefsBegin();
-  String key = String("ir") + String(slot);
-  if (prefs.getBytesLength(key.c_str()) != sizeof(code)) return false;
-  prefs.getBytes(key.c_str(), &code, sizeof(code));
-  return code.length > 0 && code.length <= IR_MAX_RAW;
-}
-
+void saveIR(uint8_t slot,const uint16_t* raw,uint16_t len){if(slot>=IR_SLOTS||len==0||len>IR_MAX_RAW)return;IRSavedCode code{};code.length=len;memcpy(code.raw,raw,len*sizeof(uint16_t));safePrefsBegin();prefs.putBytes((String("ir")+String(slot)).c_str(),&code,sizeof(code));}
+bool loadIR(uint8_t slot,IRSavedCode& code){if(slot>=IR_SLOTS)return false;safePrefsBegin();String key=String("ir")+String(slot);if(prefs.getBytesLength(key.c_str())!=sizeof(code))return false;prefs.getBytes(key.c_str(),&code,sizeof(code));return code.length>0&&code.length<=IR_MAX_RAW;}
 void sendCmd(String s);
+void sendIRSlot(uint8_t slot){IRSavedCode code{};if(!loadIR(slot,code)){sendCmd(String("IR:EMPTY:")+String(slot));return;}IrSender.sendRaw(code.raw,code.length,38);sendCmd(String("IR:SENT:")+String(slot));}
 
-void sendIRSlot(uint8_t slot) {
-  IRSavedCode code{};
-  if (!loadIR(slot, code)) {
-    sendCmd(String("IR:EMPTY:") + String(slot));
-    return;
-  }
-  IrSender.sendRaw(code.raw, code.length, 38);
-  sendCmd(String("IR:SENT:") + String(slot));
-}
+// MPU6050 level sensor
+bool imuPresent=false;
+float imuRoll=0.0f,imuPitch=0.0f;
+uint32_t lastImuMs=0;
 
-enum Page{HOME,MEDIA,MENU,IR,SETTINGS,WIFI_PAGE,TV_REMOTE}; Page page=HOME;
+bool imuWrite(uint8_t reg,uint8_t value){Wire.beginTransmission(IMU_ADDR);Wire.write(reg);Wire.write(value);return Wire.endTransmission()==0;}
+bool imuRead(uint8_t reg,uint8_t* data,size_t len){Wire.beginTransmission(IMU_ADDR);Wire.write(reg);if(Wire.endTransmission(false)!=0)return false;if(Wire.requestFrom((int)IMU_ADDR,(int)len)!=len)return false;for(size_t i=0;i<len;i++)data[i]=Wire.read();return true;}
+bool imuInit(){Wire.begin(IMU_SDA,IMU_SCL);uint8_t who=0;if(!imuRead(0x75,&who,1))return false;if(who!=0x68&&who!=0x69)return false;imuWrite(0x6B,0x00);imuWrite(0x1C,0x00);imuWrite(0x1B,0x00);delay(50);return true;}
+void updateIMU(){if(!imuPresent)return;if(millis()-lastImuMs<40)return;lastImuMs=millis();uint8_t b[6];if(!imuRead(0x3B,b,6))return;int16_t ax=(int16_t)((b[0]<<8)|b[1]);int16_t ay=(int16_t)((b[2]<<8)|b[3]);int16_t az=(int16_t)((b[4]<<8)|b[5]);float x=ax/16384.0f,y=ay/16384.0f,z=az/16384.0f;float r=atan2f(y,z)*57.29578f;float p=atan2f(-x,sqrtf(y*y+z*z))*57.29578f;imuRoll=imuRoll*0.75f+r*0.25f;imuPitch=imuPitch*0.75f+p*0.25f;}
+
+enum Page{HOME,MEDIA,MENU,IR,SETTINGS,WIFI_PAGE,TV_REMOTE,LEVEL};Page page=HOME;
 int menuIndex=0;
-
 const uint16_t BG[4]={ST77XX_BLACK,0x001F,0x7800,0x07E0};
 const uint16_t FG[4]={ST77XX_WHITE,ST77XX_WHITE,ST77XX_WHITE,ST77XX_BLACK};
-
 String cut(String s,int n){return s.length()<=n?s:s.substring(0,n-1)+"~";}
-
-void safePrefsBegin(){ static bool started=false; if(!started){prefs.begin("watch",false); started=true;} }
-void savePrefs(){safePrefsBegin(); prefs.putInt("theme",theme);prefs.putInt("wall",wallpaper);}
+void safePrefsBegin(){static bool started=false;if(!started){prefs.begin("watch",false);started=true;}}
+void savePrefs(){safePrefsBegin();prefs.putInt("theme",theme);prefs.putInt("wall",wallpaper);}
 void drawBackground(){display.fillScreen(BG[theme]);if(wallpaper==1){for(int y=0;y<280;y+=20)display.drawFastHLine(0,y,240,FG[theme]);}else if(wallpaper==2){for(int x=0;x<240;x+=20)display.drawFastVLine(x,0,280,FG[theme]);}else if(wallpaper==3){for(int r=10;r<150;r+=25)display.drawCircle(120,140,r,FG[theme]);}}
-
-void home(){
- drawBackground(); display.setTextColor(FG[theme]); display.setTextSize(5); display.setCursor(25,72);
- struct tm t; if(getLocalTime(&t,10)){display.printf("%02d:%02d",t.tm_hour,t.tm_min);}
- else display.printf("--:--");
- display.setTextSize(1);display.setCursor(10,12);display.printf("SALONIQ  %s",wifiConnected?"WiFi":"OFF");
- display.setCursor(10,258);display.printf("BLE:%s  VOL:%d%%",bleConnected?"OK":"--",volume);
-}
-void media(){
- drawBackground();display.setTextColor(FG[theme]);display.setTextSize(2);display.setCursor(8,8);display.print("MEDIA");
- display.setCursor(8,45);display.print(cut(title,18));display.setTextSize(1);display.setCursor(8,72);display.print(cut(artist,30));
- display.setCursor(8,98);display.print(playState);display.drawRect(8,125,224,8,FG[theme]);
- if(dur)display.fillRect(8,125,min(224UL,224UL*pos/dur),8,FG[theme]);
- display.setCursor(8,155);display.printf("VOL %d%%",volume);display.setCursor(8,190);display.print("SELECT play  L/R track");
- display.setCursor(8,215);display.print("UP/DOWN volume");
-}
-void menuPage(){
- drawBackground();display.setTextColor(FG[theme]);display.setTextSize(2);display.setCursor(8,8);display.print("MENU");
- const char* a[]={"Home","Media","IR Remote","Settings","WiFi","TV Remote"};
- for(int i=0;i<6;i++){display.setCursor(10,42+i*36);display.print(i==menuIndex?"> ":"  ");display.print(a[i]);}
-}
-void settingsPage(){
- drawBackground();display.setTextColor(FG[theme]);display.setTextSize(2);display.setCursor(8,8);display.print("SETTINGS");
- display.setTextSize(1);display.setCursor(10,55);display.printf("Theme: %d   Wallpaper: %d",theme+1,wallpaper);
- display.setCursor(10,85);display.print("UP/DOWN: theme");
- display.setCursor(10,105);display.print("LEFT/RIGHT: wallpaper");
- display.setCursor(10,135);display.print("ACTION: save");
- display.setCursor(10,165);display.print("BACK: home");
-}
-void wifiPage(){
- drawBackground();display.setTextColor(FG[theme]);display.setTextSize(2);display.setCursor(8,8);display.print("WIFI");
- display.setTextSize(1);display.setCursor(10,55);display.print(wifiConnected?"CONNECTED":"NOT CONNECTED");
- if(wifiConnected){display.setCursor(10,80);display.print(WiFi.localIP());}
- display.setCursor(10,125);display.print("Use Android app to configure");
- display.setCursor(10,145);display.print("SSID/password.");
-}
-void irPage(){
- drawBackground();display.setTextColor(FG[theme]);display.setTextSize(2);display.setCursor(8,8);display.print("IR");
- display.setTextSize(1);display.setCursor(10,55);display.print("ACTION = learning request");
- display.setCursor(10,75);display.print("Received IR data goes to phone");
- display.setCursor(10,105);display.print("TV Remote page can store");
- display.setCursor(10,125);display.print("named commands in future.");
-}
-void tvPage(){
- drawBackground();display.setTextColor(FG[theme]);display.setTextSize(2);display.setCursor(8,8);display.print("TV REMOTE");
- display.setTextSize(1);display.setCursor(10,55);display.print("UP/DOWN channel");
- display.setCursor(10,75);display.print("LEFT/RIGHT volume");
- display.setCursor(10,95);display.print("SELECT power");
- display.setCursor(10,115);display.print("ACTION mute");
-}
-void draw(){if(page==HOME)home();else if(page==MEDIA)media();else if(page==MENU)menuPage();else if(page==SETTINGS)settingsPage();else if(page==WIFI_PAGE)wifiPage();else if(page==TV_REMOTE)tvPage();else irPage();}
-
+void home(){drawBackground();display.setTextColor(FG[theme]);display.setTextSize(5);display.setCursor(25,72);struct tm t;if(getLocalTime(&t,10))display.printf("%02d:%02d",t.tm_hour,t.tm_min);else display.printf("--:--");display.setTextSize(1);display.setCursor(10,12);display.printf("SALONIQ  %s",wifiConnected?"WiFi":"OFF");display.setCursor(10,258);display.printf("BLE:%s VOL:%d%%",bleConnected?"OK":"--",volume);}
+void media(){drawBackground();display.setTextColor(FG[theme]);display.setTextSize(2);display.setCursor(8,8);display.print("MEDIA");display.setCursor(8,45);display.print(cut(title,18));display.setTextSize(1);display.setCursor(8,72);display.print(cut(artist,30));display.setCursor(8,98);display.print(playState);display.drawRect(8,125,224,8,FG[theme]);if(dur)display.fillRect(8,125,min(224UL,224UL*pos/dur),8,FG[theme]);display.setCursor(8,155);display.printf("VOL %d%%",volume);display.setCursor(8,190);display.print("SELECT play  L/R track");display.setCursor(8,215);display.print("UP/DOWN volume");}
+void menuPage(){drawBackground();display.setTextColor(FG[theme]);display.setTextSize(2);display.setCursor(8,8);display.print("MENU");const char* a[]={"Home","Media","IR Remote","Settings","WiFi","TV Remote","Level"};for(int i=0;i<7;i++){display.setCursor(10,42+i*32);display.print(i==menuIndex?"> ":"  ");display.print(a[i]);}}
+void settingsPage(){drawBackground();display.setTextColor(FG[theme]);display.setTextSize(2);display.setCursor(8,8);display.print("SETTINGS");display.setTextSize(1);display.setCursor(10,55);display.printf("Theme: %d Wallpaper: %d",theme+1,wallpaper);display.setCursor(10,85);display.print("UP/DOWN: theme");display.setCursor(10,105);display.print("LEFT/RIGHT: wallpaper");display.setCursor(10,135);display.print("ACTION: save");display.setCursor(10,165);display.print("BACK: home");}
+void wifiPage(){drawBackground();display.setTextColor(FG[theme]);display.setTextSize(2);display.setCursor(8,8);display.print("WIFI");display.setTextSize(1);display.setCursor(10,55);display.print(wifiConnected?"CONNECTED":"NOT CONNECTED");if(wifiConnected){display.setCursor(10,80);display.print(WiFi.localIP());}display.setCursor(10,125);display.print("Use Android app to configure");display.setCursor(10,145);display.print("SSID/password.");}
+void irPage(){drawBackground();display.setTextColor(FG[theme]);display.setTextSize(2);display.setCursor(8,8);display.print("IR");display.setTextSize(1);display.setCursor(10,55);display.print(irLearning?"LEARNING...":"ACTION = learn");display.setCursor(10,75);display.print("Point remote at watch");display.setCursor(10,105);display.print("4 IR slots saved in flash");}
+void tvPage(){drawBackground();display.setTextColor(FG[theme]);display.setTextSize(2);display.setCursor(8,8);display.print("TV REMOTE");display.setTextSize(1);display.setCursor(10,55);display.print("UP/DOWN channel");display.setCursor(10,75);display.print("LEFT/RIGHT volume");display.setCursor(10,95);display.print("SELECT power");display.setCursor(10,115);display.print("ACTION mute");}
+void levelPage(){updateIMU();drawBackground();display.setTextColor(FG[theme]);display.setTextSize(2);display.setCursor(8,8);display.print("LEVEL");if(!imuPresent){display.setTextSize(1);display.setCursor(10,65);display.print("MPU6050 NOT FOUND");display.setCursor(10,85);display.print("Connect IMU on I2C");return;}int cx=120,cy=145;int bx=constrain((int)(imuRoll*1.7f),-85,85);int by=constrain((int)(imuPitch*1.7f),-105,105);display.drawCircle(cx,cy,82,FG[theme]);display.drawCircle(cx,cy,4,FG[theme]);display.drawLine(cx-70,cy,cx+70,cy,FG[theme]);display.drawLine(cx,cy-70,cx,cy+70,FG[theme]);display.fillCircle(cx+bx,cy+by,9,FG[theme]);display.setTextSize(1);display.setCursor(10,245);display.printf("ROLL %+5.1f  PITCH %+5.1f",imuRoll,imuPitch);display.setCursor(10,260);if(fabsf(imuRoll)<2.0f&&fabsf(imuPitch)<2.0f)display.print("LEVEL / PERFECT");else display.print("Tilt watch to center bubble");}
+void draw(){if(page==HOME)home();else if(page==MEDIA)media();else if(page==MENU)menuPage();else if(page==SETTINGS)settingsPage();else if(page==WIFI_PAGE)wifiPage();else if(page==TV_REMOTE)tvPage();else if(page==LEVEL)levelPage();else irPage();}
 void sendCmd(String s){if(bleConnected){s+="\n";tx->setValue(s.c_str());tx->notify();}}
-
-void parse(String s){
- s.trim();
- if(s=="MEDIA:PLAY"){playState="Playing";draw();}
- else if(s=="MEDIA:PAUSE"){playState="Paused";draw();}
- else if(s=="MEDIA:PLAYPAUSE"){sendCmd(playState=="Playing"?"MEDIA:PAUSE":"MEDIA:PLAY");}
- else if(s=="MEDIA:VOLUP"){volume=min(100,volume+5);draw();}
- else if(s=="MEDIA:VOLDOWN"){volume=max(0,volume-5);draw();}
- else if(s=="SCREEN:MEDIA"){page=MEDIA;draw();}
- else if(s=="SCREEN:HOME"){page=HOME;draw();}
- else if(s.startsWith("WIFI_SSID:")){safePrefsBegin();prefs.putString("ssid",s.substring(10));}
- else if(s.startsWith("WIFI_PASS:")){safePrefsBegin();prefs.putString("pass",s.substring(10));}
- else if(s=="WIFI_CONNECT"){wifiConnectSaved();draw();}
- else if(s=="IR:LEARN"){irLearnSlot=0;irLearning=true;sendCmd("IR:LEARNING:0");draw();}
- else if(s.startsWith("IR:LEARN:")){int slot=s.substring(9).toInt();if(slot>=0&&slot<IR_SLOTS){irLearnSlot=slot;irLearning=true;sendCmd(String("IR:LEARNING:")+String(slot));draw();}}
- else if(s.startsWith("IR:SEND:")){int slot=s.substring(8).toInt();if(slot>=0&&slot<IR_SLOTS)sendIRSlot(slot);}
- else if(s=="IR:TV:POWER"){sendIRSlot(0);}
- else if(s=="IR:TV:CHUP"){sendIRSlot(1);}
- else if(s=="IR:TV:CHDOWN"){sendIRSlot(2);}
- else if(s=="IR:TV:VOLDOWN"){sendIRSlot(3);}
- else if(s=="IR:TV:VOLUP"){sendIRSlot(3);}
- else if(s=="IR:TV:MUTE"){sendIRSlot(3);}
- else if(s.startsWith("THEME:")){theme=constrain(s.substring(6).toInt(),0,3);savePrefs();draw();}
- else if(s.startsWith("WALL:")){wallpaper=constrain(s.substring(5).toInt(),0,3);savePrefs();draw();}
- else if(s.startsWith("META:")){
-  String x=s.substring(5);int a=x.indexOf('|'),b=x.indexOf('|',a+1),c=x.indexOf('|',b+1),d=x.indexOf('|',c+1);
-  if(a>0&&b>a&&c>b&&d>c){title=x.substring(0,a);artist=x.substring(a+1,b);playState=x.substring(b+1,c);pos=x.substring(c+1,d).toInt();dur=x.substring(d+1).toInt();draw();}
- }
-}
-
-class ServerCB:public NimBLEServerCallbacks{
- void onConnect(NimBLEServer*,NimBLEConnInfo&)override{bleConnected=true;draw();}
- void onDisconnect(NimBLEServer*,NimBLEConnInfo&,int)override{bleConnected=false;NimBLEDevice::startAdvertising();draw();}
-};
+void parse(String s){s.trim();if(s=="MEDIA:PLAY"){playState="Playing";draw();}else if(s=="MEDIA:PAUSE"){playState="Paused";draw();}else if(s=="MEDIA:PLAYPAUSE"){sendCmd(playState=="Playing"?"MEDIA:PAUSE":"MEDIA:PLAY");}else if(s=="MEDIA:VOLUP"){volume=min(100,volume+5);draw();}else if(s=="MEDIA:VOLDOWN"){volume=max(0,volume-5);draw();}else if(s=="SCREEN:MEDIA"){page=MEDIA;draw();}else if(s=="SCREEN:HOME"){page=HOME;draw();}else if(s.startsWith("WIFI_SSID:")){safePrefsBegin();prefs.putString("ssid",s.substring(10));}else if(s.startsWith("WIFI_PASS:")){safePrefsBegin();prefs.putString("pass",s.substring(10));}else if(s=="WIFI_CONNECT"){wifiConnectSaved();draw();}else if(s=="IR:LEARN"){irLearnSlot=0;irLearning=true;sendCmd("IR:LEARNING:0");draw();}else if(s.startsWith("IR:LEARN:")){int slot=s.substring(9).toInt();if(slot>=0&&slot<IR_SLOTS){irLearnSlot=slot;irLearning=true;sendCmd(String("IR:LEARNING:")+String(slot));draw();}}else if(s.startsWith("IR:SEND:")){int slot=s.substring(8).toInt();if(slot>=0&&slot<IR_SLOTS)sendIRSlot(slot);}else if(s=="IR:TV:POWER")sendIRSlot(0);else if(s=="IR:TV:CHUP")sendIRSlot(1);else if(s=="IR:TV:CHDOWN")sendIRSlot(2);else if(s=="IR:TV:VOLDOWN")sendIRSlot(3);else if(s=="IR:TV:VOLUP")sendIRSlot(3);else if(s=="IR:TV:MUTE")sendIRSlot(3);else if(s.startsWith("THEME:")){theme=constrain(s.substring(6).toInt(),0,3);savePrefs();draw();}else if(s.startsWith("WALL:")){wallpaper=constrain(s.substring(5).toInt(),0,3);savePrefs();draw();}else if(s=="SCREEN:LEVEL"){page=LEVEL;draw();}else if(s=="LEVEL:READ"){updateIMU();sendCmd(String("LEVEL:")+String(imuRoll,1)+","+String(imuPitch,1));}else if(s.startsWith("META:")){String x=s.substring(5);int a=x.indexOf('|'),b=x.indexOf('|',a+1),c=x.indexOf('|',b+1),d=x.indexOf('|',c+1);if(a>0&&b>a&&c>b&&d>c){title=x.substring(0,a);artist=x.substring(a+1,b);playState=x.substring(b+1,c);pos=x.substring(c+1,d).toInt();dur=x.substring(d+1).toInt();draw();}}}
+class ServerCB:public NimBLEServerCallbacks{void onConnect(NimBLEServer*,NimBLEConnInfo&)override{bleConnected=true;draw();}void onDisconnect(NimBLEServer*,NimBLEConnInfo&,int)override{bleConnected=false;NimBLEDevice::startAdvertising();draw();}};
 class RxCB:public NimBLECharacteristicCallbacks{void onWrite(NimBLECharacteristic*c,NimBLEConnInfo&)override{parse(c->getValue().c_str());}};
-
-void ble(){
- NimBLEDevice::init(BLE_DEVICE_NAME);auto*s=NimBLEDevice::createServer();s->setCallbacks(new ServerCB());
- auto*svc=s->createService(BLE_SERVICE_UUID);
- auto*rx=svc->createCharacteristic(BLE_RX_UUID,NIMBLE_PROPERTY::WRITE|NIMBLE_PROPERTY::WRITE_NR);
- tx=svc->createCharacteristic(BLE_TX_UUID,NIMBLE_PROPERTY::NOTIFY|NIMBLE_PROPERTY::READ);
- rx->setCallbacks(new RxCB());svc->start();auto*a=NimBLEDevice::getAdvertising();a->addServiceUUID(BLE_SERVICE_UUID);a->setName(BLE_DEVICE_NAME);a->start();
-}
-void wifiConnectSaved(){
- safePrefsBegin();theme=prefs.getInt("theme",0);wallpaper=prefs.getInt("wall",0);
- String ssid=prefs.getString("ssid",""),pass=prefs.getString("pass","");
- if(ssid.length()){WiFi.mode(WIFI_STA);WiFi.setHostname(WIFI_HOSTNAME);WiFi.begin(ssid.c_str(),pass.c_str());for(int i=0;i<30&&WiFi.status()!=WL_CONNECTED;i++)delay(250);wifiConnected=WiFi.status()==WL_CONNECTED;}
- configTime(3600,3600,"pool.ntp.org","time.nist.gov");
-}
-void setup(){
- Serial.begin(115200);
- safePrefsBegin();pinMode(TFT_BL,OUTPUT);digitalWrite(TFT_BL,HIGH);
- pinMode(BTN_UP,INPUT_PULLUP);pinMode(BTN_DOWN,INPUT_PULLUP);pinMode(BTN_LEFT,INPUT_PULLUP);pinMode(BTN_RIGHT,INPUT_PULLUP);
- pinMode(BTN_SELECT,INPUT_PULLUP);pinMode(BTN_BACK,INPUT_PULLUP);pinMode(BTN_MENU,INPUT_PULLUP);pinMode(BTN_ACTION,INPUT_PULLUP);
- SPI.begin(TFT_SCLK,-1,TFT_MOSI,TFT_CS);display.init(240,280);display.setRotation(0);
- wifiConnectSaved();ble();IrReceiver.begin(IR_RECV_PIN,ENABLE_LED_FEEDBACK);IrSender.begin(IR_SEND_PIN);draw();
-}
-bool last[8]={1,1,1,1,1,1,1,1};
-int pins[8]={BTN_UP,BTN_DOWN,BTN_LEFT,BTN_RIGHT,BTN_SELECT,BTN_BACK,BTN_MENU,BTN_ACTION};
-
-void loop(){
- bool now[8];for(int i=0;i<8;i++)now[i]=digitalRead(pins[i]);
- if(last[0]&&!now[0]){if(page==MEDIA)sendCmd("MEDIA:VOLUP");else if(page==MENU)menuIndex=(menuIndex+5)%6;else if(page==SETTINGS)theme=(theme+1)%4;else if(page==TV_REMOTE)sendCmd("IR:TV:CHUP");draw();}
- if(last[1]&&!now[1]){if(page==MEDIA)sendCmd("MEDIA:VOLDOWN");else if(page==MENU)menuIndex=(menuIndex+1)%6;else if(page==SETTINGS)theme=(theme+3)%4;else if(page==TV_REMOTE)sendCmd("IR:TV:CHDOWN");draw();}
- if(last[2]&&!now[2]){if(page==MEDIA)sendCmd("MEDIA:PREV");else if(page==SETTINGS)wallpaper=(wallpaper+3)%4;else if(page==TV_REMOTE)sendCmd("IR:TV:VOLDOWN");draw();}
- if(last[3]&&!now[3]){if(page==MEDIA)sendCmd("MEDIA:NEXT");else if(page==SETTINGS)wallpaper=(wallpaper+1)%4;else if(page==TV_REMOTE)sendCmd("IR:TV:VOLUP");draw();}
- if(last[4]&&!now[4]){if(page==HOME)page=MEDIA;else if(page==MEDIA)sendCmd("MEDIA:PLAYPAUSE");else if(page==MENU){switch(menuIndex){case 0:page=HOME;break;case 1:page=MEDIA;break;case 2:page=IR;break;case 3:page=SETTINGS;break;case 4:page=WIFI_PAGE;break;case 5:page=TV_REMOTE;break;}}else if(page==IR)sendCmd("IR:LEARN");else if(page==SETTINGS){savePrefs();}else if(page==TV_REMOTE)sendCmd("IR:TV:POWER");draw();}
- if(last[5]&&!now[5]){page=HOME;draw();}
- if(last[6]&&!now[6]){page=MENU;draw();}
- if(last[7]&&!now[7]){if(page==IR)sendCmd("IR:LEARN");else if(page==TV_REMOTE)sendCmd("IR:TV:MUTE");else if(page==SETTINGS)savePrefs();draw();}
- for(int i=0;i<8;i++)last[i]=now[i];
- if(IrReceiver.decode()){ if(irLearning){ auto *p=IrReceiver.decodedIRData.rawDataPtr; uint16_t n=p?p->rawlen:0; if(p && n>0 && n<=IR_MAX_RAW){ uint16_t v[IR_MAX_RAW]; for(uint16_t i=0;i<n;i++) v[i]=p->rawbuf[i]*MICROS_PER_TICK; saveIR(irLearnSlot,v,n); sendCmd("IR:LEARNED"); } else sendCmd("IR:LEARN_FAILED"); irLearning=false; } else sendCmd(String("IR:RAW:")+String(IrReceiver.decodedIRData.decodedRawData,HEX)); IrReceiver.resume(); }
- delay(30);
-}
+void ble(){NimBLEDevice::init(BLE_DEVICE_NAME);auto*s=NimBLEDevice::createServer();s->setCallbacks(new ServerCB());auto*svc=s->createService(BLE_SERVICE_UUID);auto*rx=svc->createCharacteristic(BLE_RX_UUID,NIMBLE_PROPERTY::WRITE|NIMBLE_PROPERTY::WRITE_NR);tx=svc->createCharacteristic(BLE_TX_UUID,NIMBLE_PROPERTY::NOTIFY|NIMBLE_PROPERTY::READ);rx->setCallbacks(new RxCB());svc->start();auto*a=NimBLEDevice::getAdvertising();a->addServiceUUID(BLE_SERVICE_UUID);a->setName(BLE_DEVICE_NAME);a->start();}
+void wifiConnectSaved(){safePrefsBegin();theme=prefs.getInt("theme",0);wallpaper=prefs.getInt("wall",0);String ssid=prefs.getString("ssid",""),pass=prefs.getString("pass","");if(ssid.length()){WiFi.mode(WIFI_STA);WiFi.setHostname(WIFI_HOSTNAME);WiFi.begin(ssid.c_str(),pass.c_str());for(int i=0;i<30&&WiFi.status()!=WL_CONNECTED;i++)delay(250);wifiConnected=WiFi.status()==WL_CONNECTED;}configTime(3600,3600,"pool.ntp.org","time.nist.gov");}
+void setup(){Serial.begin(115200);safePrefsBegin();pinMode(TFT_BL,OUTPUT);digitalWrite(TFT_BL,HIGH);pinMode(BTN_UP,INPUT_PULLUP);pinMode(BTN_DOWN,INPUT_PULLUP);pinMode(BTN_LEFT,INPUT_PULLUP);pinMode(BTN_RIGHT,INPUT_PULLUP);pinMode(BTN_SELECT,INPUT_PULLUP);pinMode(BTN_BACK,INPUT_PULLUP);pinMode(BTN_MENU,INPUT_PULLUP);pinMode(BTN_ACTION,INPUT_PULLUP);SPI.begin(TFT_SCLK,-1,TFT_MOSI,TFT_CS);display.init(240,280);display.setRotation(0);wifiConnectSaved();ble();IrReceiver.begin(IR_RECV_PIN,ENABLE_LED_FEEDBACK);IrSender.begin(IR_SEND_PIN);imuPresent=imuInit();draw();}
+bool last[8]={1,1,1,1,1,1,1,1};int pins[8]={BTN_UP,BTN_DOWN,BTN_LEFT,BTN_RIGHT,BTN_SELECT,BTN_BACK,BTN_MENU,BTN_ACTION};
+void loop(){bool now[8];for(int i=0;i<8;i++)now[i]=digitalRead(pins[i]);if(last[0]&&!now[0]){if(page==MEDIA)sendCmd("MEDIA:VOLUP");else if(page==MENU)menuIndex=(menuIndex+6)%7;else if(page==SETTINGS)theme=(theme+1)%4;else if(page==TV_REMOTE)sendCmd("IR:TV:CHUP");draw();}if(last[1]&&!now[1]){if(page==MEDIA)sendCmd("MEDIA:VOLDOWN");else if(page==MENU)menuIndex=(menuIndex+1)%7;else if(page==SETTINGS)theme=(theme+3)%4;else if(page==TV_REMOTE)sendCmd("IR:TV:CHDOWN");draw();}if(last[2]&&!now[2]){if(page==MEDIA)sendCmd("MEDIA:PREV");else if(page==SETTINGS)wallpaper=(wallpaper+3)%4;else if(page==TV_REMOTE)sendCmd("IR:TV:VOLDOWN");draw();}if(last[3]&&!now[3]){if(page==MEDIA)sendCmd("MEDIA:NEXT");else if(page==SETTINGS)wallpaper=(wallpaper+1)%4;else if(page==TV_REMOTE)sendCmd("IR:TV:VOLUP");draw();}if(last[4]&&!now[4]){if(page==HOME)page=MEDIA;else if(page==MEDIA)sendCmd("MEDIA:PLAYPAUSE");else if(page==MENU){switch(menuIndex){case 0:page=HOME;break;case 1:page=MEDIA;break;case 2:page=IR;break;case 3:page=SETTINGS;break;case 4:page=WIFI_PAGE;break;case 5:page=TV_REMOTE;break;case 6:page=LEVEL;break;}}else if(page==IR)sendCmd("IR:LEARN");else if(page==SETTINGS)savePrefs();else if(page==TV_REMOTE)sendCmd("IR:TV:POWER");draw();}if(last[5]&&!now[5]){page=HOME;draw();}if(last[6]&&!now[6]){page=MENU;draw();}if(last[7]&&!now[7]){if(page==IR)sendCmd("IR:LEARN");else if(page==TV_REMOTE)sendCmd("IR:TV:MUTE");else if(page==SETTINGS)savePrefs();draw();}for(int i=0;i<8;i++)last[i]=now[i];if(IrReceiver.decode()){if(irLearning){auto*p=IrReceiver.decodedIRData.rawDataPtr;uint16_t n=p?p->rawlen:0;if(p&&n>0&&n<=IR_MAX_RAW){uint16_t v[IR_MAX_RAW];for(uint16_t i=0;i<n;i++)v[i]=p->rawbuf[i]*MICROS_PER_TICK;saveIR(irLearnSlot,v,n);sendCmd("IR:LEARNED");}else sendCmd("IR:LEARN_FAILED");irLearning=false;}else sendCmd(String("IR:RAW:")+String(IrReceiver.decodedIRData.decodedRawData,HEX));IrReceiver.resume();}if(page==LEVEL){updateIMU();draw();}delay(30);}
